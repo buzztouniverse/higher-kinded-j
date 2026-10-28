@@ -14,6 +14,7 @@ To try them, depend on `0.6.0-SNAPSHOT` from the snapshots repository, as [Gradl
 
 ## Mapping {#mapping}
 
+- **A raw or wildcard getter-only `List` is offered only the fix that maps** ([#1319](https://github.com/higher-kinded-j/higher-kinded-j/issues/1319)). Beside a `List<String>` component, the refusal asks for the element type, and beside one of the getter's own type, the setter. It offered both before, and one led to "has no usable source". See [A getter-only `List` must name its element type](../mapping/rules.md#getter-only-list-element-type).
 - **A bean property's fix line compiles once followed** ([#1149](https://github.com/higher-kinded-j/higher-kinded-j/issues/1149)). The setter offered for `eMails` is `seteMails`, not `setEMails`. A rename to a keyword such as `default` is offered no marker, and a marker replaces the spec's own rename. A near miss such as `setx(int)` beside `Integer getX()` is named. See [When an unpaired accessor is refused](../mapping/rules.md#unpaired-accessors).
 
 ---

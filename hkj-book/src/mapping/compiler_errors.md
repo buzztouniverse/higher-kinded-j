@@ -2079,14 +2079,13 @@ interface MerchantPatchMapping extends UpdateSpec<Merchant, MerchantPatchBean> {
 
 A getter-only `List` is raw or has a wildcard, so the generated `addAll` that fills it cannot be written.
 
-**Fix.** Declare the list's element type on the getter, or give the property a setter.
+**Fix.** Declare the list's element type on the getter. Where the domain component declares the getter's own raw or wildcard type, give the property a setter instead.
 
 ```
 @GenerateMapping: bean property 'items' on 'WishlistBean' is a getter-only List, which a build
 cannot fill (not supported yet). A getter-only List is filled by the JAXB convention,
 getItems().addAll(...), and addAll needs an element type it can name: a raw List names none, so
-the call is unchecked. Declare the type arguments on 'getItems()', for example List<T>, or give
-'items' a setItems setter, which takes the property as declared.
+the call is unchecked. Declare the type arguments on 'getItems()', for example List<T>.
 ```
 
 The rule: [A getter-only `List` must name its element type](rules.md#getter-only-list-element-type).

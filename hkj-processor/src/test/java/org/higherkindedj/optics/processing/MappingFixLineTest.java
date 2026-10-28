@@ -1833,7 +1833,11 @@ class MappingFixLineTest {
       assertThat(compilation).hadErrorContaining("Give 'eMails' a seteMails setter, and let");
       assertThat(compilation)
           .hadErrorContaining(
-              "give 'eMails' a seteMails setter, which takes the property as declared.");
+              "never meet. Replace the wildcard on 'geteMails()' with the element type it stands"
+                  + " for.");
+      assertThat(compilation)
+          .hadErrorContaining(
+              "never meet. Give 'eMails' a seteMails setter, which takes the property as declared.");
       assertThat(compilation)
           .hadErrorContaining(
               "would never reach 'Config.defaultValue' (renamed to 'default'), and nothing would"
@@ -2247,6 +2251,113 @@ class MappingFixLineTest {
               shift -> shift.toString().equals("Shift[early=six, late=ten]"),
               "the shift, through both renames");
       assertThatValidated(probe(result, "option")).hasValue("on");
+    }
+  }
+
+  /**
+   * A raw getter-only {@code List} is offered the one fix its domain component maps from: type
+   * arguments where the component names its element type, and a setter where the component is a raw
+   * {@code List} too. Each is followed against its own domain.
+   */
+  @Nested
+  @DisplayName("a raw getter-only List")
+  class RawGetterOnlyList {
+
+    @Test
+    @DisplayName("is offered the fix its domain component maps from")
+    void refused() {
+      Compilation compilation =
+          compile(
+              """
+              record Wishlist(String owner, List<String> items) {}
+              @SuppressWarnings("rawtypes")
+              class WishlistModel {
+                private String owner;
+                private List items = new ArrayList();
+                public String getOwner() { return owner; }
+                public void setOwner(String owner) { this.owner = owner; }
+                public List getItems() { return items; }
+              }
+              @GenerateMapping
+              interface WishlistMapping extends MappingSpec<Wishlist, WishlistModel> {}
+
+              @SuppressWarnings("rawtypes")
+              record Ledger(String owner, List entries) {}
+              @SuppressWarnings("rawtypes")
+              class LedgerModel {
+                private String owner;
+                private List entries = new ArrayList();
+                public String getOwner() { return owner; }
+                public void setOwner(String owner) { this.owner = owner; }
+                public List getEntries() { return entries; }
+              }
+              @GenerateMapping
+              interface LedgerMapping extends MappingSpec<Ledger, LedgerModel> {}
+              """);
+      assertThat(compilation).failed();
+      assertThat(compilation).hadErrorCount(2);
+      assertThat(compilation)
+          .hadErrorContaining(
+              "so the call is unchecked. Declare the type arguments on 'getItems()', for example"
+                  + " List<T>.");
+      assertThat(compilation)
+          .hadErrorContaining(
+              "so the call is unchecked. Give 'entries' a setEntries setter, which takes the"
+                  + " property as declared.");
+      Assertions.assertThat(compilation.errors().toString()).doesNotContain("setItems");
+    }
+
+    @Test
+    @DisplayName("maps the property once that fix is followed")
+    void followed() throws ReflectiveOperationException {
+      RuntimeCompilationHelper.CompiledResult result =
+          compileFollowed(
+              """
+              record Wishlist(String owner, List<String> items) {}
+              class WishlistModel {
+                private String owner;
+                private List<String> items = new ArrayList<>();
+                public String getOwner() { return owner; }
+                public void setOwner(String owner) { this.owner = owner; }
+                public List<String> getItems() { return items; }
+              }
+              @GenerateMapping
+              interface WishlistMapping extends MappingSpec<Wishlist, WishlistModel> {}
+
+              @SuppressWarnings("rawtypes")
+              record Ledger(String owner, List entries) {}
+              @SuppressWarnings("rawtypes")
+              class LedgerModel {
+                private String owner;
+                private List entries = new ArrayList();
+                public String getOwner() { return owner; }
+                public void setOwner(String owner) { this.owner = owner; }
+                public List getEntries() { return entries; }
+                public void setEntries(List entries) { this.entries = entries; }
+              }
+              @GenerateMapping
+              interface LedgerMapping extends MappingSpec<Ledger, LedgerModel> {}
+
+              final class Probe {
+                static Object wishlist() {
+                  return WishlistMappingImpl.INSTANCE.parse(
+                      WishlistMappingImpl.INSTANCE.build(new Wishlist("Ada", List.of("kite"))));
+                }
+
+                static Object ledger() {
+                  return LedgerMappingImpl.INSTANCE.parse(
+                      LedgerMappingImpl.INSTANCE.build(new Ledger("Ada", List.of("rent"))));
+                }
+              }
+              """);
+      assertThatValidated(probe(result, "wishlist"))
+          .hasValueSatisfying(
+              wishlist -> wishlist.toString().equals("Wishlist[owner=Ada, items=[kite]]"),
+              "the wishlist, its items filled through getItems().addAll(...)");
+      assertThatValidated(probe(result, "ledger"))
+          .hasValueSatisfying(
+              ledger -> ledger.toString().equals("Ledger[owner=Ada, entries=[rent]]"),
+              "the ledger, through the setter of its raw list");
     }
   }
 

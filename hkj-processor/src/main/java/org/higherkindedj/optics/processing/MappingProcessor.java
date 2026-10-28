@@ -2850,11 +2850,12 @@ public class MappingProcessor extends AbstractProcessor {
    * shares the bean model but reads the property and never writes it, so the same bean maps there
    * untouched.
    */
-  private boolean checkCollectionGettersFillable(TypeElement spec, WireShape.BeanShape bean) {
+  private boolean checkCollectionGettersFillable(
+      TypeElement spec, TypeElement domain, WireShape.BeanShape bean) {
     for (WireShape.BeanProperty property : bean.properties()) {
       if (property.write().orElse(null) instanceof WireShape.WriteSite.CollectionAdd write
           && !hasProperArguments(property.type())) {
-        reportUnfillableCollectionGetter(spec, bean.element(), property, write);
+        reportUnfillableCollectionGetter(spec, domain, bean.element(), property, write);
         return false;
       }
     }
@@ -2865,16 +2866,21 @@ public class MappingProcessor extends AbstractProcessor {
    * The two causes read differently to the author who hit them, so they say different things: a raw
    * property names no element type at all, and a wildcard one names a bound that is a fresh type at
    * every mention. Only the raw author is told to add type arguments; the wildcard author already
-   * has one. Both are offered the setter, which takes the property's declared type whatever its
-   * arguments.
+   * has one.
+   *
+   * <p>Each is offered the one fix that maps against the domain component the property pairs with.
+   * A setter takes the property as declared, so it is offered where that component declares the
+   * same raw or wildcard type ({@link #setterFits}). Otherwise the element type is offered: a
+   * component that names one maps from it, and one of another shape, or a property no component
+   * pairs with, is then refused in its own terms, as it would be beside the setter too.
    */
   private void reportUnfillableCollectionGetter(
       TypeElement spec,
+      TypeElement domain,
       TypeElement bean,
       WireShape.BeanProperty property,
       WireShape.WriteSite.CollectionAdd write) {
     boolean raw = ProcessorUtils.isRaw((DeclaredType) property.type());
-    String setter = BeanPropertyAnalyser.setterName(property.name());
     Diagnostics.error(
         processingEnv.getMessager(),
         spec,
@@ -2894,18 +2900,34 @@ public class MappingProcessor extends AbstractProcessor {
                 : "a wildcard argument is a fresh type at each mention, so the receiver and the"
                     + " argument never meet")
             + ".",
-        (raw
-                ? "Declare the type arguments on '"
-                    + write.getter()
-                    + "()', for example List<T>, or"
+        setterFits(spec, domain, property)
+            ? "Give '"
+                + property.name()
+                + "' a "
+                + BeanPropertyAnalyser.setterName(property.name())
+                + " setter, which takes the property as declared."
+            : raw
+                ? "Declare the type arguments on '" + write.getter() + "()', for example List<T>."
                 : "Replace the wildcard on '"
                     + write.getter()
-                    + "()' with the element type it stands for, or")
-            + " give '"
-            + property.name()
-            + "' a "
-            + setter
-            + " setter, which takes the property as declared.");
+                    + "()' with the element type it stands for.");
+  }
+
+  /**
+   * Whether a setter would map a getter-only {@code List} that cannot be filled: whether the domain
+   * component the property pairs with, under its own name or a {@code @MapField} rename's, declares
+   * the property's own raw or wildcard type, so that the setter's argument is copied to it
+   * unchanged. A property no component pairs with is not.
+   */
+  private boolean setterFits(
+      TypeElement spec, TypeElement domain, WireShape.BeanProperty property) {
+    String component =
+        componentByWireName(wireNamesOf(processingEnv.getElementUtils(), spec, domain))
+            .get(property.name());
+    return component != null
+        && processingEnv
+            .getTypeUtils()
+            .isSameType(componentNamed(domain, component).asType(), property.type());
   }
 
   /**
@@ -5305,7 +5327,7 @@ public class MappingProcessor extends AbstractProcessor {
         return Optional.empty();
       }
       readOnlyBound = readOnlyGetters(processingEnv.getElementUtils(), spec, domain, bean);
-      if (!checkCollectionGettersFillable(spec, bean.readingAlso(readOnlyBound))) {
+      if (!checkCollectionGettersFillable(spec, domain, bean.readingAlso(readOnlyBound))) {
         return Optional.empty();
       }
       if (bean.direction() != WireShape.Direction.BIDIRECTIONAL) {
@@ -5476,7 +5498,7 @@ public class MappingProcessor extends AbstractProcessor {
         // asked about the lists the read-only view never showed the fillability check.
         WireShape.BeanShape bean = (WireShape.BeanShape) wireShape;
         if (!checkAccessorsPair(spec, domain, bean, unmapped, () -> false)
-            || !checkCollectionGettersFillable(spec, bean)) {
+            || !checkCollectionGettersFillable(spec, domain, bean)) {
           return Optional.empty();
         }
         projected = wireShape;

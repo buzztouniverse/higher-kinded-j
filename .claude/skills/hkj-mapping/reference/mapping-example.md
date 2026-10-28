@@ -215,7 +215,8 @@ getter returns a live mutable list, no setter) is filled with `getItems().addAll
 one must name its element type: `addAll` cannot be written over a raw receiver without going
 unchecked, nor over a wildcard one at all, so a raw or wildcard getter-only `List` is refused
 wherever a `build` is emitted - a sparse `UpdateSpec`, which only reads the property, keeps it.
-The diagnostic names the remedy the cause calls for, and a setter answers both. A domain
+The diagnostic offers the fix that maps against the domain component: a setter where the component
+declares the getter's own raw or wildcard type, and the element type otherwise. A domain
 `Optional<T>` bridges to a nullable bean property `T` (an empty one writes `null`, so the setter or
 builder setter must take it, and one declared non-null is refused), with no declaration; a record wire opts into the same bridge per
 component with `@OptionalBridge`. The bridge is refused onto a getter-only `List`: that getter

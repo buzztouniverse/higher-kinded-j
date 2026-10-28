@@ -1197,13 +1197,16 @@ class MappingProcessorBeanTest {
             + " written over a raw receiver")
     void rawGetterOnlyListRejected() {
       Compilation compilation =
-          compile(docWith("List"), listGetterOnly("List"), docMapping("DocDto"));
+          compile(docWith("List<String>"), listGetterOnly("List"), docMapping("DocDto"));
       assertThat(compilation).failed();
       assertThat(compilation)
           .hadErrorContaining("is a getter-only List, which a build cannot fill");
       assertThat(compilation).hadErrorContaining("a raw List names none, so the call is unchecked");
       assertThat(compilation)
-          .hadErrorContaining("Declare the type arguments on 'getTags()', for example List<T>");
+          .hadErrorContaining("Declare the type arguments on 'getTags()', for example List<T>.");
+      Assertions.assertThat(compilation.errors())
+          .as("a setter keeps the raw List, which no List<String> component maps from")
+          .noneMatch(error -> error.getMessage(null).contains("setTags"));
     }
 
     @Test
@@ -1213,7 +1216,7 @@ class MappingProcessorBeanTest {
     void wildcardGetterOnlyListRejected() {
       Compilation compilation =
           compile(
-              docWith("List<? extends CharSequence>"),
+              docWith("List<CharSequence>"),
               listGetterOnly("List<? extends CharSequence>"),
               docMapping("DocDto"));
       assertThat(compilation).failed();
@@ -1223,10 +1226,97 @@ class MappingProcessorBeanTest {
       assertThat(compilation)
           .hadErrorContaining("a wildcard argument is a fresh type at each mention");
       assertThat(compilation)
-          .hadErrorContaining("Replace the wildcard on 'getTags()' with the element type");
+          .hadErrorContaining(
+              "Replace the wildcard on 'getTags()' with the element type it stands for.");
       Assertions.assertThat(compilation.errors())
           .as("a wildcard author already has an argument, so must not be told to add one")
           .noneMatch(error -> error.getMessage(null).contains("Declare the type arguments"));
+      Assertions.assertThat(compilation.errors())
+          .as("a setter keeps the wildcard, which no List<CharSequence> component maps from")
+          .noneMatch(error -> error.getMessage(null).contains("setTags"));
+    }
+
+    @Test
+    @DisplayName(
+        "a getter-only List whose domain component declares the same raw or wildcard type is"
+            + " offered the setter alone, which copies the property to it unchanged")
+    void getterOnlyListOfTheComponentsOwnTypeOfferedTheSetter() {
+      for (String listType : List.of("List", "List<? extends CharSequence>")) {
+        Compilation compilation =
+            compile(docWith(listType), listGetterOnly(listType), docMapping("DocDto"));
+        assertThat(compilation)
+            .hadErrorContaining(
+                "Give 'tags' a setTags setter, which takes the property as declared.");
+        Assertions.assertThat(compilation.errors())
+            .as("%s: a named element type would no longer be the component's own type", listType)
+            .noneMatch(
+                error ->
+                    error.getMessage(null).contains("Declare the type arguments")
+                        || error.getMessage(null).contains("Replace the wildcard"));
+      }
+    }
+
+    @Test
+    @DisplayName(
+        "a getter-only List a rename pairs with is judged against the component the rename names")
+    void getterOnlyListPairedThroughARename() {
+      JavaFileObject domain =
+          JavaFileObjects.forSourceString(
+              "com.example.Doc",
+              """
+              package com.example;
+
+              import java.util.List;
+
+              public record Doc(String title, List<? extends CharSequence> labels) {}
+              """);
+      JavaFileObject spec =
+          JavaFileObjects.forSourceString(
+              "com.example.DocMapping",
+              """
+              package com.example;
+
+              import java.util.List;
+              import org.higherkindedj.optics.annotations.GenerateMapping;
+              import org.higherkindedj.optics.annotations.MapField;
+              import org.higherkindedj.optics.annotations.MappingSpec;
+
+              @GenerateMapping
+              public interface DocMapping extends MappingSpec<Doc, DocDto> {
+                @MapField(to = "tags")
+                List<? extends CharSequence> labels();
+              }
+              """);
+      Compilation compilation =
+          compile(domain, listGetterOnly("List<? extends CharSequence>"), spec);
+      assertThat(compilation)
+          .hadErrorContaining(
+              "Give 'tags' a setTags setter, which takes the property as declared.");
+    }
+
+    @Test
+    @DisplayName(
+        "a getter-only List no component pairs with, or one of another type, is told to name its"
+            + " element type, since a setter would map neither")
+    void getterOnlyListWithoutAComponentOfItsTypeToldToNameItsElementType() {
+      JavaFileObject untagged =
+          JavaFileObjects.forSourceString(
+              "com.example.Doc",
+              """
+              package com.example;
+
+              public record Doc(String title) {}
+              """);
+      for (JavaFileObject domain : List.of(untagged, docWith("java.util.Set<CharSequence>"))) {
+        Compilation compilation =
+            compile(domain, listGetterOnly("List<? extends CharSequence>"), docMapping("DocDto"));
+        assertThat(compilation)
+            .hadErrorContaining(
+                "Replace the wildcard on 'getTags()' with the element type it stands for.");
+        Assertions.assertThat(compilation.errors())
+            .as("a setter keeps the wildcard, which neither domain maps from")
+            .noneMatch(error -> error.getMessage(null).contains("setTags"));
+      }
     }
 
     @Test
@@ -1293,7 +1383,9 @@ class MappingProcessorBeanTest {
     }
 
     @Test
-    @DisplayName("a setter takes the same raw and wildcard properties, which is the second fix")
+    @DisplayName(
+        "a setter takes the same raw and wildcard properties, which is the fix a component of that"
+            + " type is offered")
     void aSetterTakesWhatTheCollectionGetterCannot() {
       JavaFileObject wire =
           JavaFileObjects.forSourceString(

@@ -1120,7 +1120,7 @@ interface MerchantPatchMapping extends UpdateSpec<Merchant, MerchantPatchBean> {
              heading="bean property 'x' on 'Y' is a getter-only List, which a build cannot fill (not supported yet)",
              fragment="which a build cannot fill",
              meaning="A getter-only `List` is raw or has a wildcard, so the generated `addAll` that fills it cannot be written.",
-             fix="Declare the list's element type on the getter, or give the property a setter.",
+             fix="Declare the list's element type on the getter. Where the domain component declares the getter's own raw or wildcard type, give the property a setter instead.",
              rule=("A getter-only `List` must name its element type", "rules.md#getter-only-list-element-type"),
              code="""record Wishlist(List<String> items) {}
 
